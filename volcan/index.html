@@ -1,985 +1,915 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Monitor Gunung Api Indonesia - MAGMA Live Dashboard</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
-<style>
-  * { font-family: 'Inter', sans-serif; }
-  body { margin: 0; }
-  
-  @keyframes pulse-ring {
-    0% { transform: scale(1); opacity: 0.8; }
-    100% { transform: scale(3); opacity: 0; }
-  }
-  @keyframes float {
-    0%, 100% { transform: translateY(0px); }
-    50% { transform: translateY(-8px); }
-  }
-  @keyframes slideUp {
-    from { opacity: 0; transform: translateY(20px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  @keyframes countUp {
-    from { opacity: 0; transform: scale(0.5); }
-    to { opacity: 1; transform: scale(1); }
-  }
-  @keyframes ripple {
-    0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
-    70% { box-shadow: 0 0 0 20px rgba(239, 68, 68, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
-  }
-  @keyframes gradient {
-    0%, 100% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-  }
-  
-  .pulse-marker { animation: pulse-ring 2s infinite; }
-  .float-anim { animation: float 3s ease-in-out infinite; }
-  .slide-up { animation: slideUp 0.5s ease-out; }
-  .count-up { animation: countUp 0.6s ease-out; }
-  .erupting-ripple { animation: ripple 1.5s infinite; }
-  .gradient-bg {
-    background: linear-gradient(-45deg, #0f172a, #1e3a8a, #7c3aed, #0f172a);
-    background-size: 400% 400%;
-    animation: gradient 15s ease infinite;
-  }
-  .glass {
-    background: rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-  }
-  .glass-white {
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(10px);
-  }
-  .scrollbar-thin::-webkit-scrollbar { width: 6px; }
-  .scrollbar-thin::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 10px; }
-  .scrollbar-thin::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 10px; }
-  
-  .leaflet-popup-content-wrapper {
-    border-radius: 12px !important;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.2) !important;
-  }
-  .leaflet-popup-content { margin: 12px !important; }
-  
-  .custom-marker { background: transparent !important; border: none !important; }
-  
-  .status-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 4px 12px;
-    border-radius: 999px;
-    font-size: 12px;
-    font-weight: 700;
-    color: white;
-  }
-  
-  .chart-bar {
-    transition: width 1s ease-out;
-  }
-</style>
-</head>
-<body class="bg-slate-50">
-<div id="root"></div>
-
-<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-<script type="text/babel">
-const { useState, useEffect, useRef, useMemo } = React;
-
-// ===== ICONS (SVG Inline) =====
-const Icons = {
-  Activity: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>,
-  Flame: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>,
-  Shield: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
-  Alert: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>,
-  Map: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>,
-  Search: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>,
-  Download: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
-  Chat: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>,
-  Send: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>,
-  X: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
-  Nav: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>,
-  Back: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>,
-  Volcano: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3l4 8 5-5 2 15H2L8 3z"/></svg>,
-  Info: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>,
-  Check: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
-  Clock: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
-};
-
-// ===== UTILS =====
-const formatTime = (iso) => {
-  if (!iso) return '-';
-  try {
-    return new Date(iso).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-  } catch { return '-'; }
-};
-
-const getDistance = (lat1, lon1, lat2, lon2) => {
-  const R = 6371;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-};
-
-const statusConfig = {
-  NORMAL: { bg: 'bg-emerald-500', text: 'text-emerald-600', light: 'bg-emerald-50', label: 'Normal', dot: '#10b981' },
-  WASPADA: { bg: 'bg-amber-400', text: 'text-amber-600', light: 'bg-amber-50', label: 'Waspada', dot: '#fbbf24' },
-  SIAGA: { bg: 'bg-orange-500', text: 'text-orange-600', light: 'bg-orange-50', label: 'Siaga', dot: '#f97316' },
-  AWAS: { bg: 'bg-red-600', text: 'text-red-600', light: 'bg-red-50', label: 'Awas', dot: '#ef4444' }
-};
-
-// ===== DATA MAGMA =====
-const FALLBACK_DATA = [
-  { id: 'semeru', name: 'Gunung Semeru', province: 'Jawa Timur', regency: 'Lumajang', lat: -8.108, lng: 112.922, elevation: 3676, status: 'SIAGA', erupting: true, ashHeight: 1500, ashDir: 'Timur', visual: 'Teramati kolom abu putih kelabu setinggi 1500m di atas puncak. Erupsi terekam seismogram dengan amplitudo maksimum 25mm.', rekomendasi: 'Masyarakat tidak beraktivitas dalam radius 1km dari kawah. Waspada lahar di aliran sungai.', tingkat: 'Level III (SIAGA)' },
-  { id: 'merapi', name: 'Gunung Merapi', province: 'DI Yogyakarta', regency: 'Sleman', lat: -7.540, lng: 110.446, elevation: 2930, status: 'WASPADA', erupting: false, ashHeight: null, ashDir: null, visual: 'Aktivitas kegempaan fluktuatif. Deformasi tubuh gunung menunjukkan inflasi stabil.', rekomendasi: 'Masyarakat tidak beraktivitas dalam radius 3km dari kawah.', tingkat: 'Level II (WASPADA)' },
-  { id: 'lewotobi', name: 'Gunung Lewotobi Laki-laki', province: 'NTT', regency: 'Flores Timur', lat: -8.272, lng: 122.775, elevation: 1703, status: 'AWAS', erupting: true, ashHeight: 2000, ashDir: 'Barat', visual: 'Erupsi berkelanjutan. Kolom abu teramati setinggi 2000m di atas puncak condong ke arah barat.', rekomendasi: 'Evakuasi warga dalam radius 7km dari kawah. Siapkan jalur evakuasi.', tingkat: 'Level IV (AWAS)' },
-  { id: 'agung', name: 'Gunung Agung', province: 'Bali', regency: 'Karangasem', lat: -8.342, lng: 115.511, elevation: 2997, status: 'NORMAL', erupting: false, ashHeight: null, ashDir: null, visual: 'Cuaca cerah. Gunung terlihat jelas hingga tertutup kabut. Tidak ada aktivitas signifikan.', rekomendasi: 'Masyarakat di sekitar gunung agar tetap tenang.', tingkat: 'Level I (NORMAL)' },
-  { id: 'karangetang', name: 'Gunung Karangetang', province: 'Sulawesi Utara', regency: 'Siau Tagulandang Biaro', lat: 2.780, lng: 125.400, elevation: 1784, status: 'WASPADA', erupting: false, ashHeight: null, ashDir: null, visual: 'Asap putih tipis teramati dari kawah utama dengan tekanan lemah.', rekomendasi: 'Warga tidak beraktivitas dalam radius 2.5km dari kawah.', tingkat: 'Level II (WASPADA)' },
-  { id: 'sinabung', name: 'Gunung Sinabung', province: 'Sumatera Utara', regency: 'Karo', lat: 3.170, lng: 98.392, elevation: 2460, status: 'WASPADA', erupting: false, ashHeight: null, ashDir: null, visual: 'Teramati asap putih sedang dari kawah utama. Aktivitas kegempaan vulkanik dangkal dominan.', rekomendasi: 'Masyarakat tidak beraktivitas dalam radius 3km dari kawah.', tingkat: 'Level II (WASPADA)' },
-  { id: 'kerinci', name: 'Gunung Kerinci', province: 'Jambi', regency: 'Kerinci', lat: -1.697, lng: 101.264, elevation: 3805, status: 'NORMAL', erupting: false, ashHeight: null, ashDir: null, visual: 'Gunung terlihat jelas. Cuaca cerah. Tidak ada aktivitas vulkanik signifikan.', rekomendasi: 'Masyarakat di sekitar gunung agar tetap tenang.', tingkat: 'Level I (NORMAL)' },
-  { id: 'bromo', name: 'Gunung Bromo', province: 'Jawa Timur', regency: 'Probolinggo', lat: -7.942, lng: 112.950, elevation: 2329, status: 'NORMAL', erupting: false, ashHeight: null, ashDir: null, visual: 'Asap putih tipis teramati dari kawah. Aktivitas normal.', rekomendasi: 'Wisatawan dapat berkunjung dengan tetap waspada.', tingkat: 'Level I (NORMAL)' },
-  { id: 'tambora', name: 'Gunung Tambora', province: 'NTB', regency: 'Bima', lat: -8.270, lng: 118.000, elevation: 2850, status: 'NORMAL', erupting: false, ashHeight: null, ashDir: null, visual: 'Tidak ada aktivitas vulkanik signifikan. Cuaca cerah.', rekomendasi: 'Masyarakat di sekitar gunung agar tetap tenang.', tingkat: 'Level I (NORMAL)' },
-  { id: ' Krakatau', name: 'Gunung Krakatau', province: 'Lampung', regency: 'Lampung Selatan', lat: -6.102, lng: 105.423, elevation: 813, status: 'WASPADA', erupting: false, ashHeight: null, ashDir: null, visual: 'Aktivitas kegempaan vulkanik dangkal tercatat. Asap putih tipis.', rekomendasi: 'Masyarakat tidak beraktivitas dalam radius 2km dari kawah.', tingkat: 'Level II (WASPADA)' },
-  { id: 'dieng', name: 'Gunung Dieng', province: 'Jawa Tengah', regency: 'Wonosobo', lat: -7.208, lng: 109.899, elevation: 2565, status: 'NORMAL', erupting: false, ashHeight: null, ashDir: null, visual: 'Aktivitas fumarola normal. Tidak ada peningkatan aktivitas.', rekomendasi: 'Waspada gas beracun di area kawah.', tingkat: 'Level I (NORMAL)' },
-  { id: 'raung', name: 'Gunung Raung', province: 'Jawa Timur', regency: 'Banyuwangi', lat: -8.125, lng: 114.042, elevation: 3332, status: 'WASPADA', erupting: false, ashHeight: null, ashDir: null, visual: 'Asap putih tipis teramati dari kawah. Aktivitas kegempaan fluktuatif.', rekomendasi: 'Masyarakat tidak beraktivitas dalam radius 2km dari kawah.', tingkat: 'Level II (WASPADA)' }
-];
-
-// ===== HOOK: Fetch MAGMA Data =====
-const useMagmaData = () => {
-  const [data, setData] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [lastUpdate, setLastUpdate] = useState(null);
-  const [status, setStatus] = useState('connecting');
-
-  const fetchMagma = async () => {
-    try {
-      setStatus('connecting');
-      const urls = [
-        'https://magma.esdm.go.id/v1/gunung-api',
-        'https://corsproxy.io/?' + encodeURIComponent('https://magma.esdm.go.id/v1/gunung-api'),
-        'https://api.allorigins.win/raw?url=' + encodeURIComponent('https://magma.esdm.go.id/v1/gunung-api')
-      ];
-      
-      let result = null;
-      for (const url of urls) {
-        try {
-          const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-          if (res.ok) {
-            const json = await res.json();
-            if (json && json.data && Array.isArray(json.data) && json.data.length > 0) {
-              result = json.data;
-              break;
-            }
-          }
-        } catch(e) { continue; }
-      }
-      
-      if (result) {
-        const normalized = result.map(item => ({
-          id: (item.id || item.nama || Math.random().toString(36)).toString(),
-          name: item.nama || 'Unknown',
-          province: item.provinsi || '-',
-          regency: item.kabupaten || '-',
-          lat: parseFloat(item.lintang) || 0,
-          lng: parseFloat(item.bujur) || 0,
-          elevation: parseInt(item.elevasi) || 0,
-          status: (item.level || 'NORMAL').toUpperCase(),
-          erupting: item.status === 'ERUPSI' || ['AWAS', 'SIAGA'].includes((item.level || '').toUpperCase()),
-          ashHeight: item.tinggi_ash || item.kolom_abu || null,
-          ashDir: item.arah_ash || item.arah_angin || null,
-          visual: item.visual || item.informasi || '-',
-          rekomendasi: item.rekomendasi || item.imbauan || 'Ikuti arahan PVMBG dan BPBD setempat.',
-          tingkat: item.tingkat_aktivitas || item.level || 'NORMAL'
-        })).filter(v => v.lat !== 0 && v.lng !== 0);
-        
-        if (normalized.length > 0) {
-          setData(normalized);
-          setLastUpdate(new Date());
-          setError(null);
-          setStatus('connected');
-          return;
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SiGAPI - Simulasi Gunung Api Indonesia</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --primary: #2563eb; --secondary: #f59e0b; --danger: #ef4444;
+            --success: #10b981; --purple: #8b5cf6; --pink: #ec4899;
+            --dark: #1e293b; --light: #f8fafc;
         }
-      }
-      throw new Error('No valid data');
-    } catch (err) {
-      setError('Menggunakan data cache (koneksi MAGMA terbatas). Data akan auto-refresh.');
-      setData(FALLBACK_DATA);
-      setLastUpdate(new Date());
-      setStatus('fallback');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchMagma();
-    const interval = setInterval(fetchMagma, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  return { data, loading, error, lastUpdate, status };
-};
-
-// ===== COMPONENT: Animated Counter =====
-const Counter = ({ value }) => {
-  const [count, setCount] = useState(0);
-  useEffect(() => {
-    const duration = 800;
-    const start = Date.now();
-    const animate = () => {
-      const progress = Math.min((Date.now() - start) / duration, 1);
-      setCount(Math.floor(progress * value));
-      if (progress < 1) requestAnimationFrame(animate);
-    };
-    animate();
-  }, [value]);
-  return <span className="count-up">{count}</span>;
-};
-
-// ===== COMPONENT: Stat Card =====
-const StatCard = ({ label, value, icon, color, bg }) => (
-  <div className={`relative overflow-hidden rounded-2xl p-5 ${bg} border border-white/50 shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all`}>
-    <div className="flex items-start justify-between relative z-10">
-      <div>
-        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">{label}</p>
-        <p className={`text-3xl font-bold ${color}`}>
-          <Counter value={value} />
-        </p>
-      </div>
-      <div className={`p-3 rounded-xl ${color} bg-white shadow-md`}>{icon}</div>
-    </div>
-    <div className={`absolute -bottom-4 -right-4 w-24 h-24 rounded-full opacity-10 ${color.replace('text-', 'bg-')}`}></div>
-  </div>
-);
-
-// ===== COMPONENT: Map =====
-const VolcanoMap = ({ volcanoes, selectedVolcano, onSelect, showKRB }) => {
-  const mapRef = useRef(null);
-  const mapInstance = useRef(null);
-  const markersLayer = useRef(null);
-  const krbLayers = useRef([]);
-
-  useEffect(() => {
-    if (!mapRef.current || mapInstance.current) return;
-    const map = L.map(mapRef.current, { zoomControl: true }).setView([-2.5, 118], 5);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap',
-      maxZoom: 18
-    }).addTo(map);
-    markersLayer.current = L.layerGroup().addTo(map);
-    mapInstance.current = map;
-    return () => { map.remove(); mapInstance.current = null; };
-  }, []);
-
-  useEffect(() => {
-    if (!mapInstance.current || !markersLayer.current) return;
-    markersLayer.current.clearLayers();
-    krbLayers.current.forEach(l => mapInstance.current.removeLayer(l));
-    krbLayers.current = [];
-
-    volcanoes.forEach(v => {
-      const cfg = statusConfig[v.status] || statusConfig.NORMAL;
-      const iconHtml = `
-        <div style="position:relative;width:36px;height:36px;">
-          <div style="width:36px;height:36px;background:radial-gradient(circle,${cfg.dot} 0%,${cfg.dot}dd 100%);border-radius:50%;border:3px solid white;box-shadow:0 4px 12px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;font-size:16px;z-index:2;position:relative;">${v.erupting ? '🔥' : '🌋'}</div>
-          ${v.erupting ? `<div class="pulse-marker" style="position:absolute;top:0;left:0;width:36px;height:36px;border-radius:50%;background:${cfg.dot};z-index:1;"></div>` : ''}
-        </div>
-      `;
-      const icon = L.divIcon({ className: 'custom-marker', html: iconHtml, iconSize: [36, 36], iconAnchor: [18, 18] });
-      const marker = L.marker([v.lat, v.lng], { icon }).addTo(markersLayer.current);
-      marker.bindPopup(`
-        <div style="min-width:220px">
-          <h3 style="font-weight:bold;font-size:16px;margin:0 0 8px 0">${v.name}</h3>
-          <p style="margin:4px 0;font-size:13px"><strong>Lokasi:</strong> ${v.regency}, ${v.province}</p>
-          <p style="margin:4px 0;font-size:13px"><strong>Elevasi:</strong> ${v.elevation} mdpl</p>
-          <p style="margin:4px 0;font-size:13px"><strong>Status:</strong> <span style="background:${cfg.dot};color:white;padding:2px 10px;border-radius:999px;font-weight:bold">${v.status}</span></p>
-          ${v.erupting ? `<p style="margin:4px 0;font-size:13px;color:#dc2626;font-weight:bold">🔔 SEDANG ERUPSI</p>` : ''}
-          ${v.ashHeight ? `<p style="margin:4px 0;font-size:13px"><strong>Kolom Abu:</strong> ${v.ashHeight}m ke arah ${v.ashDir}</p>` : ''}
-          <div style="display:flex;gap:6px;margin-top:10px">
-            <button onclick="window.__selectVolcano('${v.id}')" style="flex:1;background:#3b82f6;color:white;padding:6px;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:12px">Detail</button>
-            <button onclick="window.__startSim('${v.id}')" style="flex:1;background:#dc2626;color:white;padding:6px;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:12px">Simulasi</button>
-          </div>
-        </div>
-      `);
-      marker.on('click', () => onSelect(v));
-    });
-
-    if (showKRB && selectedVolcano) {
-      const krbs = [
-        { r: 1000, color: '#ef4444', name: 'KRB I - Bahaya Langsung (1 km)', opacity: 0.4 },
-        { r: 3000, color: '#f97316', name: 'KRB II - Ancaman Sekunder (3 km)', opacity: 0.3 },
-        { r: 7000, color: '#eab308', name: 'KRB III - Zona Evakuasi (7 km)', opacity: 0.2 }
-      ];
-      krbs.forEach(k => {
-        const circle = L.circle([selectedVolcano.lat, selectedVolcano.lng], {
-          radius: k.r, color: k.color, fillColor: k.color, fillOpacity: k.opacity, weight: 2, dashArray: k.r > 1000 ? '5,5' : ''
-        }).addTo(mapInstance.current);
-        circle.bindPopup(`<strong>${k.name}</strong>`);
-        krbLayers.current.push(circle);
-      });
-      mapInstance.current.flyTo([selectedVolcano.lat, selectedVolcano.lng], 11, { duration: 1.5 });
-    }
-  }, [volcanoes, selectedVolcano, showKRB, onSelect]);
-
-  return (
-    <div className="relative">
-      <div ref={mapRef} className="w-full h-[500px] rounded-2xl shadow-2xl border-4 border-white"></div>
-      <div className="absolute bottom-4 left-4 glass-white rounded-xl p-3 shadow-lg z-[1000]">
-        <div className="text-xs font-bold text-slate-700 mb-2">Legenda Status</div>
-        <div className="space-y-1.5">
-          {Object.entries(statusConfig).map(([key, cfg]) => (
-            <div key={key} className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full shadow" style={{ background: cfg.dot }}></div>
-              <span className="text-xs font-medium">{cfg.label}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// ===== COMPONENT: GeoGuard AI =====
-const GeoGuardAI = ({ context }) => {
-  const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState([
-    { role: 'ai', text: '👋 Halo! Saya GeoGuard AI, asisten monitoring gunung api Indonesia.\n\nSaya terhubung dengan data live MAGMA. Tanyakan:\n• "Gunung apa yang erupsi?"\n• "Status Semeru"\n• "Arti status Siaga"\n• "Jelaskan KRB"\n• "Rekomendasi keselamatan"\n• "Ringkasan hari ini"' }
-  ]);
-  const [input, setInput] = useState('');
-  const [typing, setTyping] = useState(false);
-  const endRef = useRef(null);
-
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, typing]);
-
-  const respond = (q) => {
-    const query = q.toLowerCase();
-    const { volcanoes, stats } = context;
-    
-    if (query.includes('erupsi') || query.includes('letusan')) {
-      const erupting = volcanoes.filter(v => v.erupting);
-      if (erupting.length === 0) return '✅ Saat ini tidak ada gunung yang sedang erupsi berdasarkan data live MAGMA. Semua gunung dalam kondisi terkendali.';
-      const list = erupting.map(v => `•  *${v.name}* (${v.province})\n  Status: ${v.status} | Kolom abu: ${v.ashHeight || '-'}m ${v.ashDir || ''}\n  ⚠️ ${v.rekomendasi}`).join('\n\n');
-      return ` *Gunung Sedang Erupsi (${erupting.length})*\n\n${list}\n\n⚠️ Total ${stats.erupting} gunung erupsi. Patuhi rekomendasi PVMBG!`;
-    }
-    
-    if (query.includes('semeru')) {
-      const v = volcanoes.find(x => x.name.toLowerCase().includes('semeru'));
-      if (!v) return 'Data Semeru tidak tersedia saat ini.';
-      return `📊 *Status Gunung Semeru*\n\n• Nama: ${v.name}\n• Lokasi: ${v.regency}, ${v.province}\n• Elevasi: ${v.elevation} mdpl\n• Status: *${v.status}* (${v.tingkat})\n• Update: ${formatTime(v.lastUpdate || new Date())}\n\n${v.visual ? `📝 *Info Visual:*\n${v.visual}\n\n` : ''}⚠️ *Rekomendasi:*\n${v.rekomendasi}`;
-    }
-    
-    if (query.includes('siaga')) {
-      return `📋 *Status SIAGA (Level III)*\n\n*Karakteristik:*\n• Aktivitas vulkanik meningkat signifikan\n• Potensi letusan dalam 2 minggu - 1 bulan\n• Parameter (seismik, deformasi, gas) meningkat\n\n*Rekomendasi Keselamatan:*\n1. ✋ STOP aktivitas dalam radius 3-5 km dari kawah\n2. 🏃 Persiapan evakuasi SIAP DILAKSANAKAN\n3.  Pantau info resmi PVMBG/BPBD\n4. 🎒 Siapkan tas siaga bencana\n5. 📞 Ketahui jalur evakuasi & titik kumpul\n\n*Tindakan:* Segera menjauh dari zona berbahaya!`;
-    }
-    
-    if (query.includes('awas')) {
-      return `🚨 *Status AWAS (Level IV)*\n\n*Kondisi KRITIS:*\n• Letusan dapat terjadi segera\n• Bahaya langsung mengancam\n\n*Tindakan Mendesak:*\n1. 🚨 EVAKUASI segera dari zona bahaya\n2.  Ikuti jalur evakuasi BPBD\n3. 😷 Gunakan masker (abu vulkanik)\n4. 👁️ Lindungi mata dengan kacamata\n5. 📻 Dengarkan instruksi petugas\n\n*Radius bahaya:* Hingga 7 km dari kawah`;
-    }
-    
-    if (query.includes('krb') || query.includes('zona') || query.includes('bahaya')) {
-      return `️ *Kawasan Rawan Bencana (KRB)*\n\n🔴 *KRB I (0-1 km):* Bahaya langsung (awan panas, lontaran material, gas beracun). DILARANG BERAKTIVITAS.\n\n *KRB II (1-5 km):* Ancaman sekunder (aliran lava, awan panas, lahar). WASPADA TINGGI, evakuasi jika perlu.\n\n *KRB III (5-10 km):* Zona evakuasi (hujan abu, lahar hujan). SIAP EVAKUASI.\n\n💡 *Jika di dalam KRB:*\n1. Ikuti arahan evakuasi BPBD\n2. Gunakan masker & lindungi mata\n3. Ikuti jalur evakuasi resmi\n4. Jangan kembali sampai aman`;
-    }
-    
-    if (query.includes('ringkas') || query.includes('ringkasan') || query.includes('laporan')) {
-      const active = volcanoes.filter(v => v.status !== 'NORMAL');
-      return `📊 *Ringkasan Aktivitas Gunung Api*\n\n📈 *Statistik:*\n• Total dipantau: *${stats.total}*\n• 🔥 Erupsi: *${stats.erupting}*\n•  Awas: *${stats.awas}*\n• ⚠️ Siaga: *${stats.siaga}*\n• ⚡ Waspada: *${stats.waspada}*\n• ✅ Normal: *${stats.normal}*\n\n🎯 *Prioritas Pemantauan:*\n${active.slice(0,5).map(v => `• ${v.name} (${v.status}) - ${v.province}`).join('\n') || '• Tidak ada'}\n\n Update: ${formatTime(context.lastUpdate)}\n📡 Status: ${context.status === 'connected' ? '✅ Live' : context.status === 'fallback' ? '⚠️ Cache' : ' Connecting'}`;
-    }
-    
-    if (query.includes('rekomendasi') || query.includes('keselamatan') || query.includes('safety')) {
-      return `📋 *Rekomendasi Keselamatan Umum*\n\n*Untuk Masyarakat:*\n1. 📱 Pantau info resmi PVMBG/BPBD\n2. 🎒 Siapkan tas siaga (dokumen, obat, makanan)\n3. 🗺️ Ketahui jalur evakuasi & titik kumpul\n4. 📞 Simpan nomor darurat\n5. 👥 Ikuti simulasi evakuasi\n\n*Untuk Pendaki:*\n1.  Patuhi larangan pendakian\n2. 🌡️ Cek kondisi sebelum berangkat\n3.  Bawa masker, kacamata, P3K\n4. 📡 Bawa alat komunikasi\n\n*Saat Erupsi:*\n1. 😷 Masker untuk abu vulkanik\n2. 👁️ Lindungi mata\n3.  Tetap di dalam ruangan\n4.  Hindari berkendara (abu licin)\n5.  Dengarkan instruksi evakuasi`;
-    }
-    
-    if (query.includes('waspada')) {
-      return `⚡ *Status WASPADA (Level II)*\n\n*Kondisi:*\n• Aktivitas vulkanik di atas normal\n• Potensi peningkatan aktivitas\n\n*Rekomendasi:*\n1. ⚠️ Tidak beraktivitas dalam radius 2-3 km dari kawah\n2. 📻 Pantau perkembangan aktivitas\n3. 🎒 Siapkan rencana evakuasi\n4. 🚫 Batasi akses ke zona berbahaya\n\n*Untuk wisatawan:* Ikuti arahan pengelola dan petugas setempat.`;
-    }
-    
-    if (query.includes('normal')) {
-      return `✅ *Status NORMAL (Level I)*\n\n*Kondisi:*\n• Aktivitas vulkanik normal\n• Tidak ada tanda peningkatan signifikan\n\n*Rekomendasi:*\n1. ✅ Masyarakat tetap tenang\n2. ⚠️ Tetap waspada terhadap perubahan\n3.  Pantau info resmi berkala\n4. 🚫 Tidak mendekati kawah secara berlebihan\n\nGunung dalam kondisi aman untuk aktivitas normal di luar zona kawah.`;
-    }
-    
-    // Cek nama gunung spesifik
-    for (const v of volcanoes) {
-      if (query.includes(v.name.toLowerCase().replace('gunung ', ''))) {
-        return `📊 *${v.name}*\n\n• Lokasi: ${v.regency}, ${v.province}\n• Elevasi: ${v.elevation} mdpl\n• Status: *${v.status}* (${v.tingkat})\n• Erupsi: ${v.erupting ? '🔥 YA' : '✅ Tidak'}\n${v.ashHeight ? `• Kolom Abu: ${v.ashHeight}m ${v.ashDir}\n` : ''}\n ${v.visual}\n\n️ ${v.rekomendasi}`;
-      }
-    }
-    
-    return `🤔 Saya kurang memahami. Coba tanyakan:\n\n• "Gunung apa yang erupsi?"\n• "Status Semeru/Merapi/Agung"\n• "Arti status Siaga/Awas/Waspada"\n• "Jelaskan KRB"\n• "Rekomendasi keselamatan"\n• "Ringkasan hari ini"\n\nAtau sebutkan nama gunung tertentu!`;
-  };
-
-  const send = () => {
-    if (!input.trim()) return;
-    const userMsg = { role: 'user', text: input };
-    setMessages(m => [...m, userMsg]);
-    setInput('');
-    setTyping(true);
-    setTimeout(() => {
-      setMessages(m => [...m, { role: 'ai', text: respond(input) }]);
-      setTyping(false);
-    }, 700 + Math.random() * 500);
-  };
-
-  const quickActions = ['Gunung erupsi', 'Status Semeru', 'Arti Siaga', 'Jelaskan KRB', 'Rekomendasi', 'Ringkasan'];
-
-  return (
-    <>
-      <button onClick={() => setOpen(true)} className="fixed bottom-6 right-6 bg-gradient-to-br from-blue-600 to-purple-600 text-white p-4 rounded-full shadow-2xl hover:scale-110 transition-all z-50 float-anim">
-        <Icons.Chat />
-        <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full border-2 border-white animate-pulse"></span>
-      </button>
-      
-      {open && (
-        <div className="fixed bottom-24 right-6 w-[90vw] max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 z-50 overflow-hidden flex flex-col slide-up" style={{ maxHeight: '600px' }}>
-          <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-4 flex justify-between items-center">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center backdrop-blur">
-                <Icons.Chat />
-              </div>
-              <div>
-                <h3 className="font-bold">GeoGuard AI</h3>
-                <p className="text-xs text-white/80 flex items-center gap-1">
-                  <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></span>
-                  Online • Data Live
-                </p>
-              </div>
-            </div>
-            <button onClick={() => setOpen(false)} className="p-2 hover:bg-white/20 rounded-lg"><Icons.X /></button>
-          </div>
-          
-          <div className="p-4 overflow-y-auto space-y-3 bg-slate-50 flex-1 scrollbar-thin" style={{ minHeight: '300px' }}>
-            {messages.map((m, i) => (
-              <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] p-3 rounded-2xl text-sm whitespace-pre-line ${m.role === 'user' ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-br-md' : 'bg-white border border-slate-200 text-slate-800 rounded-bl-md shadow-sm'}`}>
-                  {m.text}
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: var(--dark); 
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+        .container { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
+        .container-full { max-width: 100%; padding: 0 20px; }
+        
+        /* Header Modern */
+        .header { 
+            background: linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.85) 100%);
+            backdrop-filter: blur(10px);
+            border-bottom: 3px solid var(--primary);
+            padding: 15px 0; 
+            position: sticky; 
+            top: 0; 
+            z-index: 1000;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        .logo { display: flex; align-items: center; gap: 15px; }
+        .logo-icon {
+            width: 45px; height: 45px;
+            background: linear-gradient(135deg, var(--danger) 0%, var(--secondary) 100%);
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        .logo-text { 
+            font-size: 24px; 
+            font-weight: 700; 
+            background: linear-gradient(135deg, var(--primary), var(--purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        /* Pages */
+        .page { display: none; animation: fadeIn 0.5s; }
+        .page.active { display: block; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        /* Hero Section */
+        .hero { 
+            position: relative; 
+            padding: 100px 0; 
+            background: linear-gradient(135deg, rgba(102,126,234,0.9) 0%, rgba(118,75,162,0.9) 100%);
+            overflow: hidden;
+        }
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="1" fill="white" opacity="0.3"/></svg>');
+            background-size: 50px 50px;
+            animation: moveBackground 20s linear infinite;
+        }
+        @keyframes moveBackground {
+            from { transform: translateY(0); }
+            to { transform: translateY(50px); }
+        }
+        .hero-content { 
+            position: relative; 
+            text-align: center; 
+            max-width: 900px; 
+            margin: 0 auto;
+            z-index: 1;
+        }
+        .badge { 
+            display: inline-block; 
+            background: linear-gradient(135deg, var(--secondary), var(--pink));
+            color: white; 
+            padding: 8px 20px; 
+            border-radius: 25px; 
+            font-size: 14px; 
+            font-weight: 600; 
+            margin-bottom: 30px;
+            box-shadow: 0 4px 15px rgba(245,158,11,0.4);
+            animation: float 3s ease-in-out infinite;
+        }
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+        .hero-title { 
+            font-size: 56px; 
+            font-weight: 800; 
+            margin-bottom: 20px; 
+            color: white;
+            text-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        .hero-subtitle { 
+            font-size: 36px; 
+            font-weight: 700; 
+            color: #fbbf24;
+            margin-bottom: 30px;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+        .hero-description { 
+            font-size: 18px; 
+            color: rgba(255,255,255,0.95); 
+            margin-bottom: 50px; 
+            line-height: 1.8;
+        }
+        .start-card { 
+            background: white;
+            padding: 50px; 
+            border-radius: 20px; 
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            margin: 40px 0;
+            transition: all 0.3s;
+        }
+        .start-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 25px 70px rgba(0,0,0,0.4);
+        }
+        
+        /* Buttons */
+        .btn-primary, .btn-secondary, .btn-back { 
+            padding: 14px 32px; 
+            border-radius: 12px; 
+            font-size: 16px; 
+            font-weight: 600; 
+            cursor: pointer; 
+            transition: all 0.3s; 
+            border: none; 
+            display: inline-flex; 
+            align-items: center; 
+            gap: 10px;
+        }
+        .btn-primary { 
+            background: linear-gradient(135deg, var(--primary), var(--purple));
+            color: white;
+            box-shadow: 0 4px 15px rgba(37,99,235,0.4);
+        }
+        .btn-primary:hover { 
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(37,99,235,0.5);
+        }
+        .btn-secondary { 
+            background: white;
+            color: var(--primary); 
+            border: 2px solid var(--primary);
+        }
+        .btn-back { 
+            background: rgba(255,255,255,0.2);
+            color: white; 
+            padding: 10px 20px;
+        }
+        
+        /* Simulation Layout */
+        .simulation-header { 
+            padding: 30px 0; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        .simulation-header h1 { 
+            font-size: 32px; 
+            flex: 1;
+            color: white;
+        }
+        .simulation-controls { 
+            display: flex; 
+            gap: 15px; 
+            flex-wrap: wrap;
+        }
+        .simulation-layout { 
+            display: grid; 
+            grid-template-columns: 1fr 450px; 
+            gap: 30px; 
+            margin-bottom: 40px;
+        }
+        .map-container { 
+            position: relative; 
+            height: 700px; 
+            border-radius: 20px; 
+            overflow: hidden;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            background: #1a1a2e;
+        }
+        #map { width: 100%; height: 100%; z-index: 1; }
+        
+        /* Eruption Animation Overlay */
+        .eruption-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 500;
+            overflow: hidden;
+        }
+        
+        /* Ash Cloud Animation */
+        .ash-cloud {
+            position: absolute;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(139,119,101,0.6) 0%, rgba(160,140,120,0.4) 40%, transparent 70%);
+            filter: blur(20px);
+            animation: ashExpand 8s ease-out infinite;
+        }
+        
+        @keyframes ashExpand {
+            0% {
+                transform: scale(0) translate(0, 0);
+                opacity: 0;
+            }
+            20% {
+                opacity: 0.8;
+            }
+            100% {
+                transform: scale(3) translate(var(--tx), var(--ty));
+                opacity: 0;
+            }
+        }
+        
+        /* Eruption Column */
+        .eruption-column {
+            position: absolute;
+            background: linear-gradient(to top, rgba(239,68,68,0.8), rgba(245,158,11,0.6), rgba(255,255,255,0.4));
+            border-radius: 50% 50% 0 0;
+            filter: blur(10px);
+            animation: columnErupt 3s ease-out infinite;
+            box-shadow: 0 0 40px rgba(239,68,68,0.6);
+        }
+        
+        @keyframes columnErupt {
+            0% {
+                height: 0;
+                opacity: 0;
+            }
+            50% {
+                opacity: 1;
+            }
+            100% {
+                height: var(--column-height);
+                opacity: 0;
+            }
+        }
+        
+        /* Particle Effects */
+        .particle {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: rgba(239,68,68,0.8);
+            border-radius: 50%;
+            pointer-events: none;
+            animation: particleFly 4s ease-out infinite;
+        }
+        
+        @keyframes particleFly {
+            0% {
+                transform: translate(0, 0) scale(1);
+                opacity: 1;
+            }
+            100% {
+                transform: translate(var(--px), var(--py)) scale(0);
+                opacity: 0;
+            }
+        }
+        
+        /* Shockwave Effect */
+        .shockwave {
+            position: absolute;
+            border: 3px solid rgba(245,158,11,0.6);
+            border-radius: 50%;
+            animation: shockwaveExpand 2s ease-out infinite;
+        }
+        
+        @keyframes shockwaveExpand {
+            0% {
+                width: 0;
+                height: 0;
+                opacity: 1;
+            }
+            100% {
+                width: 400px;
+                height: 400px;
+                opacity: 0;
+            }
+        }
+        
+        /* Lava Flow Animation */
+        .lava-flow {
+            position: absolute;
+            background: linear-gradient(135deg, rgba(239,68,68,0.9), rgba(245,158,11,0.7));
+            border-radius: 50%;
+            filter: blur(8px);
+            animation: lavaFlow 6s ease-in-out infinite;
+        }
+        
+        @keyframes lavaFlow {
+            0%, 100% {
+                transform: scale(1) rotate(0deg);
+            }
+            50% {
+                transform: scale(1.2) rotate(180deg);
+            }
+        }
+        
+        /* Wind Direction Indicator */
+        .wind-indicator {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: white;
+            padding: 15px 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .wind-arrow {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--primary), var(--purple));
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: windRotate 4s ease-in-out infinite;
+        }
+        @keyframes windRotate {
+            0%, 100% { transform: rotate(0deg); }
+            50% { transform: rotate(15deg); }
+        }
+        
+        .map-legend { 
+            position: absolute; 
+            bottom: 25px; 
+            left: 25px; 
+            background: white;
+            padding: 20px; 
+            border-radius: 15px; 
+            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+            z-index: 1000;
+            min-width: 280px;
+        }
+        .map-legend h4 { 
+            margin-bottom: 15px;
+            font-size: 16px;
+            color: var(--dark);
+        }
+        .legend-item { 
+            display: flex; 
+            align-items: center; 
+            gap: 10px; 
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+        .legend-color { 
+            width: 25px; 
+            height: 25px; 
+            border-radius: 6px;
+            border: 2px solid rgba(0,0,0,0.1);
+        }
+        
+        .side-panel { 
+            display: flex; 
+            flex-direction: column; 
+            gap: 20px;
+        }
+        .info-card { 
+            background: white;
+            padding: 30px; 
+            border-radius: 15px; 
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+        }
+        .info-card h3 { 
+            font-size: 20px; 
+            margin-bottom: 20px; 
+            color: var(--dark);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .param-item { 
+            display: flex; 
+            justify-content: space-between; 
+            padding: 12px 0; 
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .param-item:last-child { border-bottom: none; }
+        .param-label { color: #6b7280; }
+        .param-value { font-weight: 600; color: var(--dark); }
+        
+        .risk-level { 
+            display: inline-block;
+            padding: 6px 16px; 
+            border-radius: 20px; 
+            font-size: 14px; 
+            font-weight: 600;
+        }
+        .risk-low { background: #d1fae5; color: #065f46; }
+        .risk-medium { background: #fef3c7; color: #92400e; }
+        .risk-high { background: #fee2e2; color: #991b1b; }
+        
+        /* Simulation Controls Panel */
+        .simulation-panel {
+            background: linear-gradient(135deg, rgba(255,255,255,0.95), rgba(248,250,252,0.95));
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .simulation-panel h3 {
+            font-size: 18px;
+            margin-bottom: 15px;
+            color: var(--dark);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .control-group {
+            margin-bottom: 15px;
+        }
+        .control-group label {
+            display: block;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #4b5563;
+        }
+        .control-slider {
+            width: 100%;
+            height: 8px;
+            border-radius: 4px;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            outline: none;
+            -webkit-appearance: none;
+        }
+        .control-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: white;
+            border: 3px solid var(--primary);
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+        
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #065f46;
+            margin-top: 10px;
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: #10b981;
+            border-radius: 50%;
+            animation: blink 1.5s infinite;
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero-title { font-size: 36px; }
+            .simulation-layout { grid-template-columns: 1fr; }
+            .map-container { height: 500px; }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <div class="logo">
+                <div class="logo-icon">
+                    <i class="fas fa-mountain" style="color: white; font-size: 24px;"></i>
                 </div>
-              </div>
-            ))}
-            {typing && (
-              <div className="flex justify-start">
-                <div className="bg-white border border-slate-200 p-3 rounded-2xl rounded-bl-md shadow-sm">
-                  <div className="flex gap-1">
-                    <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                    <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                    <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
-                  </div>
+                <span class="logo-text">SiGAPI</span>
+            </div>
+        </div>
+    </header>
+
+    <div id="simulation-page" class="page active">
+        <div class="container-full">
+            <div class="simulation-header">
+                <button class="btn-back" onclick="confirmExit()">
+                    <i class="fas fa-arrow-left"></i> Keluar
+                </button>
+                <h1 id="sim-volcano-name"><i class="fas fa-volcano"></i> Simulasi Gunung Api</h1>
+                <div class="simulation-controls">
+                    <button id="btn-use-location" class="btn-secondary">
+                        <i class="fas fa-location-crosshairs"></i> Lokasi Saya
+                    </button>
+                    <button id="btn-pick-location" class="btn-secondary">
+                        <i class="fas fa-map-pin"></i> Pilih Peta
+                    </button>
+                    <button id="btn-run-simulation" class="btn-primary">
+                        <i class="fas fa-play"></i> Jalankan Simulasi
+                    </button>
                 </div>
-              </div>
-            )}
-            <div ref={endRef} />
-          </div>
-          
-          <div className="px-3 py-2 bg-slate-50 border-t flex flex-wrap gap-1.5">
-            {quickActions.map(q => (
-              <button key={q} onClick={() => setInput(q)} className="px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-700 hover:border-blue-500 hover:text-blue-600 transition">
-                {q}
-              </button>
-            ))}
-          </div>
-          
-          <div className="p-3 border-t bg-white flex gap-2">
-            <input className="flex-1 px-4 py-2.5 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Tanya tentang gunung api..." value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && send()} />
-            <button onClick={send} disabled={!input.trim() || typing} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-2.5 rounded-xl hover:shadow-lg transition disabled:opacity-50">
-              <Icons.Send />
-            </button>
-          </div>
-        </div>
-      )}
-    </>
-  );
-};
-
-// ===== COMPONENT: Simulation =====
-const Simulation = ({ volcano, onBack }) => {
-  const [userLoc, setUserLoc] = useState(null);
-  const [distance, setDistance] = useState(null);
-  const [safety, setSafety] = useState('AMAN');
-  const [simulating, setSimulating] = useState(false);
-  const [step, setStep] = useState(0);
-  const mapRef = useRef(null);
-  const mapInst = useRef(null);
-  const animLayers = useRef([]);
-
-  useEffect(() => {
-    if (!mapRef.current || mapInst.current) return;
-    const map = L.map(mapRef.current).setView([volcano.lat, volcano.lng], 11);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-    L.marker([volcano.lat, volcano.lng], {
-      icon: L.divIcon({ html: '<div style="font-size:32px">🌋</div>', iconSize: [32,32], className: 'custom-marker' })
-    }).addTo(map).bindPopup(`<b>${volcano.name}</b><br/>Lokasi Kawah`).openPopup();
-    mapInst.current = map;
-    return () => { map.remove(); mapInst.current = null; };
-  }, [volcano]);
-
-  const getLocation = () => {
-    if (!navigator.geolocation) { alert('Geolocation tidak didukung browser Anda'); return; }
-    navigator.geolocation.getCurrentPosition(pos => {
-      const coords = [pos.coords.latitude, pos.coords.longitude];
-      setUserLoc(coords);
-      const d = getDistance(coords[0], coords[1], volcano.lat, volcano.lng);
-      setDistance(d);
-      setSafety(d < 1 ? 'BAHAYA' : d < 3 ? 'WASPADA' : 'AMAN');
-      if (mapInst.current) {
-        L.marker(coords, {
-          icon: L.divIcon({ html: '<div style="background:#3b82f6;width:16px;height:16px;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3)"></div>', iconSize: [16,16], className: 'custom-marker' })
-        }).addTo(mapInst.current).bindPopup(`<b>Lokasi Anda</b><br/>Jarak: ${d.toFixed(2)} km`).openPopup();
-        mapInst.current.fitBounds([coords, [volcano.lat, volcano.lng]], { padding: [50,50] });
-      }
-    }, () => alert('Izin lokasi ditolak. Aktifkan izin lokasi di browser.'));
-  };
-
-  const startSim = () => {
-    setSimulating(true);
-    setStep(0);
-    animLayers.current.forEach(l => mapInst.current.removeLayer(l));
-    animLayers.current = [];
-    
-    const steps = [
-      { d: 0, fn: () => setStep(1) },
-      { d: 1500, fn: () => { setStep(2); if(mapInst.current) { const c = L.circle([volcano.lat, volcano.lng], { radius: 1000, color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.5, weight: 3 }).addTo(mapInst.current).bindPopup('KRB I - Bahaya Langsung'); animLayers.current.push(c); } } },
-      { d: 3000, fn: () => { setStep(3); if(mapInst.current) { const c = L.circle([volcano.lat, volcano.lng], { radius: 3000, color: '#f97316', fillColor: '#f97316', fillOpacity: 0.4, weight: 2, dashArray: '5,5' }).addTo(mapInst.current).bindPopup('KRB II - Ancaman Sekunder'); animLayers.current.push(c); } } },
-      { d: 4500, fn: () => { setStep(4); if(mapInst.current) { const c = L.circle([volcano.lat, volcano.lng], { radius: 7000, color: '#eab308', fillColor: '#eab308', fillOpacity: 0.3, weight: 2 }).addTo(mapInst.current).bindPopup('KRB III - Zona Evakuasi'); animLayers.current.push(c); } } },
-      { d: 6000, fn: () => { setStep(5); setSimulating(false); } }
-    ];
-    steps.forEach(s => setTimeout(s.fn, s.d));
-  };
-
-  const safetyCfg = {
-    BAHAYA: { color: 'bg-red-600', text: 'BAHAYA - Segera Evakuasi!', icon: '🚨' },
-    WASPADA: { color: 'bg-amber-500', text: 'WASPADA - Siap Evakuasi', icon: '⚠️' },
-    AMAN: { color: 'bg-emerald-500', text: 'AMAN - Tetap Waspada', icon: '✅' }
-  };
-  const s = safetyCfg[safety];
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 p-4 md:p-8">
-      <button onClick={onBack} className="mb-6 flex items-center gap-2 text-slate-600 hover:text-slate-900 font-medium transition">
-        <Icons.Back /> Kembali ke Dashboard
-      </button>
-      
-      <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 text-amber-900 p-6 rounded-2xl mb-8 flex items-start gap-4 shadow-lg">
-        <span className="text-3xl">️</span>
-        <div>
-          <h3 className="font-bold text-lg mb-1">Simulasi Edukatif</h3>
-          <p className="text-sm">Visualisasi ini berdasarkan data resmi MAGMA dan bukan prediksi ilmiah. Selalu ikuti arahan PVMBG, BPBD, dan pemerintah setempat.</p>
-        </div>
-      </div>
-
-      <div className="grid lg:grid-cols-3 gap-8">
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xl h-fit">
-          <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">
-            <span className="p-2 bg-blue-100 rounded-xl text-blue-600"><Icons.Info /></span>
-            Data Letusan Resmi
-          </h2>
-          
-          <div className="space-y-3">
-            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
-              <div className="text-xs text-slate-500 mb-1">Nama Gunung</div>
-              <div className="font-bold text-lg">{volcano.name}</div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                <div className="text-xs text-slate-500 mb-1">Status</div>
-                <div className={`font-bold ${statusConfig[volcano.status]?.text}`}>{volcano.status}</div>
-              </div>
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                <div className="text-xs text-slate-500 mb-1">Tingkat</div>
-                <div className="font-bold text-sm">{volcano.tingkat || '-'}</div>
-              </div>
-            </div>
-            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2 text-sm">
-              <div className="flex justify-between"><span className="text-slate-500">Elevasi</span><span className="font-semibold">{volcano.elevation} mdpl</span></div>
-              <div className="flex justify-between"><span className="text-slate-500">Kolom Abu</span><span className="font-semibold">{volcano.ashHeight || '-'} m</span></div>
-              <div className="flex justify-between"><span className="text-slate-500">Arah Abu</span><span className="font-semibold">{volcano.ashDir || '-'}</span></div>
-              <div className="flex justify-between"><span className="text-slate-500">Radius Bahaya</span><span className="font-semibold">1-7 km</span></div>
-            </div>
-            {volcano.visual && (
-              <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
-                <div className="text-xs font-bold text-blue-900 mb-1">📝 Informasi Visual</div>
-                <p className="text-sm text-blue-800">{volcano.visual}</p>
-              </div>
-            )}
-            {volcano.rekomendasi && (
-              <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
-                <div className="text-xs font-bold text-amber-900 mb-1">⚠️ Rekomendasi PVMBG</div>
-                <p className="text-sm text-amber-800">{volcano.rekomendasi}</p>
-              </div>
-            )}
-          </div>
-
-          <div className="mt-6 space-y-3">
-            <button onClick={getLocation} className="w-full py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-semibold flex items-center justify-center gap-2 transition">
-              <Icons.Nav /> Gunakan Lokasi Saya
-            </button>
-            {userLoc && (
-              <div className={`p-4 rounded-xl text-center text-white font-bold ${s.color} shadow-lg ${safety === 'BAHAYA' ? 'animate-pulse' : ''}`}>
-                <div className="text-3xl mb-1">{s.icon}</div>
-                <div>{s.text}</div>
-                <div className="text-sm mt-2 opacity-90">Jarak: {distance.toFixed(2)} km</div>
-              </div>
-            )}
-            <button onClick={startSim} disabled={simulating} className={`w-full py-4 px-4 rounded-xl font-bold text-white flex items-center justify-center gap-3 transition shadow-xl ${simulating ? 'bg-slate-400 cursor-not-allowed' : 'bg-gradient-to-r from-red-600 to-orange-600 hover:scale-105'}`}>
-              {simulating ? <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>Simulasi Berjalan...</> : <><span></span>Mulai Simulasi Letusan</>}
-            </button>
-          </div>
-        </div>
-
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden relative">
-          <div ref={mapRef} className="w-full h-[500px] lg:h-[700px]"></div>
-          {simulating && (
-            <div className="absolute bottom-6 left-6 right-6 glass-white p-5 rounded-2xl shadow-2xl">
-              <h4 className="font-bold mb-3 text-slate-800 flex items-center gap-2">⏱️ Timeline Simulasi</h4>
-              <div className="flex gap-2 mb-2">
-                {[
-                  { label: 'Deteksi Gempa', icon: '📊' },
-                  { label: 'KRB I (1km)', icon: '🔴' },
-                  { label: 'KRB II (3km)', icon: '🟠' },
-                  { label: 'KRB III (7km)', icon: '🟡' },
-                  { label: 'Evakuasi', icon: '🚨' }
-                ].map((s, i) => (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                    <div className={`w-full h-2 rounded-full transition-all duration-500 ${step >= i + 1 ? 'bg-gradient-to-r from-red-500 to-orange-500' : 'bg-slate-200'}`}></div>
-                    <div className={`text-[10px] text-center font-medium ${step >= i + 1 ? 'text-red-600' : 'text-slate-400'}`}>
-                      <div className="text-base">{s.icon}</div>
-                      {s.label}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="text-xs text-slate-600 text-center mt-2">
-                {step === 1 && ' Gempa vulkanik terdeteksi, aktivitas meningkat...'}
-                {step === 2 && '🔴 Zona KRB I (Bahaya Langsung) diaktifkan!'}
-                {step === 3 && '🟠 Zona KRB II (Ancaman Sekunder) diaktifkan!'}
-                {step === 4 && '🟡 Zona KRB III (Evakuasi) diaktifkan!'}
-                {step === 5 && '🚨 Evakuasi warga dalam radius 7 km dimulai!'}
-              </div>
-            </div>
-          )}
-          <div className="absolute top-4 left-4 glass-white p-3 rounded-xl shadow-lg">
-            <div className="text-xs font-bold mb-2">Zona Bahaya</div>
-            <div className="space-y-1 text-xs">
-              <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-red-500"></div><span>KRB I (1 km)</span></div>
-              <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-orange-500"></div><span>KRB II (3 km)</span></div>
-              <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-amber-400"></div><span>KRB III (7 km)</span></div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// ===== MAIN APP =====
-function App() {
-  const { data: volcanoes, loading, error, lastUpdate, status } = useMagmaData();
-  const [view, setView] = useState('dashboard');
-  const [selected, setSelected] = useState(null);
-  const [showKRB, setShowKRB] = useState(false);
-  const [search, setSearch] = useState('');
-  const [filterStatus, setFilterStatus] = useState('ALL');
-
-  const stats = useMemo(() => ({
-    total: volcanoes.length,
-    erupting: volcanoes.filter(v => v.erupting).length,
-    normal: volcanoes.filter(v => v.status === 'NORMAL').length,
-    waspada: volcanoes.filter(v => v.status === 'WASPADA').length,
-    siaga: volcanoes.filter(v => v.status === 'SIAGA').length,
-    awas: volcanoes.filter(v => v.status === 'AWAS').length
-  }), [volcanoes]);
-
-  const filtered = useMemo(() => {
-    let f = volcanoes.filter(v => {
-      const matchSearch = v.name.toLowerCase().includes(search.toLowerCase()) || v.province.toLowerCase().includes(search.toLowerCase());
-      const matchStatus = filterStatus === 'ALL' || v.status === filterStatus;
-      return matchSearch && matchStatus;
-    });
-    f.sort((a, b) => (b.erupting ? 1 : 0) - (a.erupting ? 1 : 0));
-    return f;
-  }, [volcanoes, search, filterStatus]);
-
-  const exportCSV = () => {
-    const headers = ['Nama', 'Provinsi', 'Kabupaten', 'Status', 'Tingkat', 'Elevasi', 'Kolom Abu', 'Arah', 'Update'];
-    const rows = filtered.map(v => [v.name, v.province, v.regency, v.status, v.tingkat || '-', v.elevation, v.ashHeight || '-', v.ashDir || '-', formatTime(v.lastUpdate || new Date())]);
-    const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
-    const link = document.createElement('a');
-    link.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-    link.download = `monitor_gunung_api_${new Date().toISOString().slice(0,10)}.csv`;
-    link.click();
-  };
-
-  useEffect(() => {
-    window.__selectVolcano = (id) => {
-      const v = volcanoes.find(x => x.id === id);
-      if (v) setSelected(v);
-    };
-    window.__startSim = (id) => {
-      const v = volcanoes.find(x => x.id === id);
-      if (v) { setSelected(v); setView('simulation'); }
-    };
-  }, [volcanoes]);
-
-  if (view === 'simulation' && selected) {
-    return <Simulation volcano={selected} onBack={() => { setView('dashboard'); setSelected(null); }} />;
-  }
-
-  return (
-    <div className="min-h-screen bg-slate-50">
-      {/* Hero */}
-      <section className="gradient-bg text-white py-12 md:py-16 px-4 relative overflow-hidden">
-        <div className="absolute inset-0 opacity-20">
-          <div className="absolute top-10 left-10 w-64 h-64 bg-white rounded-full blur-3xl"></div>
-          <div className="absolute bottom-10 right-10 w-80 h-80 bg-purple-400 rounded-full blur-3xl"></div>
-        </div>
-        <div className="max-w-7xl mx-auto relative z-10">
-          <div className="flex items-center gap-4 mb-4">
-            <div className="p-3 bg-white/20 rounded-2xl backdrop-blur text-4xl">🌋</div>
-            <div>
-              <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight">Monitor Gunung Api Indonesia</h1>
-              <p className="text-blue-200 text-sm md:text-base">MAGMA Live Dashboard • PVMBG</p>
-            </div>
-          </div>
-          <p className="text-lg text-white/90 max-w-3xl leading-relaxed mb-6">
-            Indonesia berada di <strong>Cincin Api Pasifik</strong>. Pantau aktivitas gunung api secara real-time menggunakan data resmi <span className="font-bold">MAGMA Indonesia (PVMBG)</span>. Update otomatis setiap 30 detik.
-          </p>
-          <div className="flex flex-wrap gap-3">
-            <div className="glass px-4 py-2 rounded-xl flex items-center gap-2 text-sm">
-              <div className={`w-2 h-2 rounded-full ${status === 'connected' ? 'bg-emerald-400 animate-pulse' : status === 'fallback' ? 'bg-amber-400' : 'bg-red-400'}`}></div>
-              <span>{status === 'connected' ? '● Online - Live Data' : status === 'fallback' ? '◐ Mode Cache' : '○ Connecting...'}</span>
-            </div>
-            {lastUpdate && (
-              <div className="glass px-4 py-2 rounded-xl flex items-center gap-2 text-sm">
-                <Icons.Clock /> Update: {formatTime(lastUpdate)}
-              </div>
-            )}
-          </div>
-          {error && <div className="mt-4 glass px-4 py-3 rounded-xl text-sm flex items-start gap-2">⚠️ {error}</div>}
-        </div>
-      </section>
-
-      <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
-        {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          <StatCard label="Total Dipantau" value={stats.total} icon={<Icons.Activity />} color="text-blue-600" bg="bg-blue-50" />
-          <StatCard label="Sedang Erupsi" value={stats.erupting} icon={<Icons.Flame />} color="text-red-600" bg="bg-red-50" />
-          <StatCard label="Normal" value={stats.normal} icon={<Icons.Shield />} color="text-emerald-600" bg="bg-emerald-50" />
-          <StatCard label="Waspada" value={stats.waspada} icon={<Icons.Alert />} color="text-amber-600" bg="bg-amber-50" />
-          <StatCard label="Siaga" value={stats.siaga} icon={<Icons.Alert />} color="text-orange-600" bg="bg-orange-50" />
-          <StatCard label="Awas" value={stats.awas} icon={<Icons.Alert />} color="text-red-700" bg="bg-red-50" />
-        </div>
-
-        {/* Map */}
-        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xl">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-            <div>
-              <h2 className="text-2xl font-bold flex items-center gap-3">
-                <span className="p-2 bg-blue-100 rounded-xl text-blue-600"><Icons.Map /></span>
-                Peta Sebaran Gunung Api
-              </h2>
-              <p className="text-slate-500 text-sm mt-1">Klik marker untuk detail & simulasi</p>
-            </div>
-            <label className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-100 transition">
-              <input type="checkbox" checked={showKRB} onChange={e => setShowKRB(e.target.checked)} className="w-4 h-4 text-blue-600 rounded" />
-              <span className="text-sm font-medium">Tampilkan Zona KRB</span>
-            </label>
-          </div>
-          <VolcanoMap volcanoes={volcanoes} selectedVolcano={selected} onSelect={setSelected} showKRB={showKRB} />
-        </div>
-
-        {/* Chart + Feed */}
-        <div className="grid lg:grid-cols-3 gap-6">
-          {/* Chart */}
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xl">
-            <h3 className="font-bold text-xl mb-6 flex items-center gap-2">
-              <span className="p-2 bg-blue-100 rounded-xl text-blue-600">📊</span>
-              Distribusi Status
-            </h3>
-            <div className="space-y-4">
-              {[
-                { label: 'Normal', count: stats.normal, color: 'bg-emerald-500' },
-                { label: 'Waspada', count: stats.waspada, color: 'bg-amber-400' },
-                { label: 'Siaga', count: stats.siaga, color: 'bg-orange-500' },
-                { label: 'Awas', count: stats.awas, color: 'bg-red-600' }
-              ].map(item => {
-                const pct = stats.total ? (item.count / stats.total) * 100 : 0;
-                return (
-                  <div key={item.label}>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span className="font-medium">{item.label}</span>
-                      <span className="font-bold">{item.count} gunung</span>
-                    </div>
-                    <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
-                      <div className={`h-full ${item.color} chart-bar rounded-full`} style={{ width: `${pct}%` }}></div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="mt-6 pt-6 border-t">
-              <div className="text-xs text-slate-500 mb-2">Total Gunung Dipantau</div>
-              <div className="text-4xl font-bold text-slate-800">{stats.total}</div>
-              <div className="text-sm text-slate-600 mt-1">
-                {stats.erupting > 0 ? `🔥 ${stats.erupting} sedang erupsi` : '✅ Semua terkendali'}
-              </div>
-            </div>
-          </div>
-
-          {/* Live Feed */}
-          <div className="lg:col-span-2 bg-white p-6 rounded-3xl border border-slate-200 shadow-xl">
-            <h3 className="font-bold text-xl mb-6 flex items-center gap-2">
-              <span className="relative flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
-              </span>
-              Live Activity Feed
-              <span className="text-xs font-normal text-slate-500 ml-2">(Auto-update 30s)</span>
-            </h3>
-            <div className="space-y-3 max-h-[450px] overflow-y-auto scrollbar-thin pr-2">
-              {loading ? (
-                <div className="text-center py-12">
-                  <div className="inline-block w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-3"></div>
-                  <p className="text-slate-500">Memuat data dari MAGMA...</p>
-                </div>
-              ) : filtered.filter(v => v.erupting || v.status === 'AWAS' || v.status === 'SIAGA').length === 0 ? (
-                <div className="text-center py-12 bg-slate-50 rounded-2xl">
-                  <div className="text-5xl mb-3">✅</div>
-                  <p className="text-slate-600 font-medium">Semua gunung dalam kondisi aman</p>
-                  <p className="text-sm text-slate-500 mt-1">Tidak ada aktivitas erupsi signifikan</p>
-                </div>
-              ) : (
-                filtered.filter(v => v.erupting || v.status === 'AWAS' || v.status === 'SIAGA').map((v, i) => (
-                  <div key={i} className="p-5 bg-gradient-to-br from-slate-50 to-white rounded-2xl border-2 border-slate-200 hover:border-blue-300 hover:shadow-lg transition-all">
-                    <div className="flex justify-between items-start mb-3">
-                      <div className="flex items-center gap-3">
-                        <div className={`p-2 rounded-xl ${v.erupting ? 'bg-red-100 text-red-600 animate-pulse' : statusConfig[v.status]?.light}`}>
-                          {v.erupting ? '🔥' : '🌋'}
+            
+            <div class="simulation-layout">
+                <div class="map-container">
+                    <div id="map"></div>
+                    <div class="eruption-overlay" id="eruption-overlay"></div>
+                    
+                    <div class="wind-indicator">
+                        <div class="wind-arrow">
+                            <i class="fas fa-wind" style="color: white;"></i>
                         </div>
                         <div>
-                          <h4 className="font-bold text-lg">{v.name}</h4>
-                          <p className="text-xs text-slate-500">{v.regency}, {v.province}</p>
+                            <div style="font-size: 12px; color: #6b7280;">Arah Angin</div>
+                            <div style="font-weight: 700; color: var(--dark);" id="wind-direction-display">Timur (E)</div>
                         </div>
-                      </div>
-                      <div className="text-right">
-                        <span className={`status-badge ${statusConfig[v.status]?.bg}`}>{v.status}</span>
-                        <p className="text-xs text-slate-500 mt-1">{formatTime(v.lastUpdate || new Date())}</p>
-                      </div>
                     </div>
-                    {v.visual && <p className="text-sm text-slate-600 mb-3">{v.visual}</p>}
-                    {v.ashHeight && (
-                      <div className="flex items-center gap-4 text-sm mb-3">
-                        <span>💨 Kolom abu: <strong>{v.ashHeight}m</strong></span>
-                        {v.ashDir && <span>🧭 Arah: <strong>{v.ashDir}</strong></span>}
-                      </div>
-                    )}
-                    {v.rekomendasi && (
-                      <div className="bg-blue-50 p-3 rounded-xl border border-blue-200">
-                        <p className="text-xs text-blue-800"><strong>⚠️ Rekomendasi:</strong> {v.rekomendasi}</p>
-                      </div>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Table */}
-        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xl">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-            <div>
-              <h3 className="font-bold text-2xl">📋 Data Aktivitas Terkini</h3>
-              <p className="text-slate-500 text-sm mt-1">{filtered.length} gunung tercatat</p>
-            </div>
-            <div className="flex flex-wrap gap-3 w-full md:w-auto">
-              <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="px-4 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
-                <option value="ALL">Semua Status</option>
-                <option value="NORMAL">Normal</option>
-                <option value="WASPADA">Waspada</option>
-                <option value="SIAGA">Siaga</option>
-                <option value="AWAS">Awas</option>
-              </select>
-              <div className="relative flex-1 md:w-80">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"><Icons.Search /></span>
-                <input className="w-full pl-12 pr-4 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Cari gunung atau provinsi..." value={search} onChange={e => setSearch(e.target.value)} />
-              </div>
-              <button onClick={exportCSV} className="px-5 py-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-xl text-sm font-medium flex items-center gap-2 transition shadow-lg hover:scale-105">
-                <Icons.Download /> Export CSV
-              </button>
-            </div>
-          </div>
-          <div className="overflow-x-auto rounded-2xl border border-slate-200">
-            <table className="w-full text-sm">
-              <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200">
-                <tr>
-                  <th className="px-6 py-4 text-left font-semibold">Gunung</th>
-                  <th className="px-6 py-4 text-left font-semibold">Lokasi</th>
-                  <th className="px-6 py-4 text-left font-semibold">Status</th>
-                  <th className="px-6 py-4 text-left font-semibold">Elevasi</th>
-                  <th className="px-6 py-4 text-right font-semibold">Aksi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {loading ? (
-                  <tr><td colSpan="5" className="px-6 py-12 text-center text-slate-500">Memuat data...</td></tr>
-                ) : filtered.length === 0 ? (
-                  <tr><td colSpan="5" className="px-6 py-12 text-center text-slate-500">🔍 Tidak ada data yang cocok</td></tr>
-                ) : (
-                  filtered.map(v => (
-                    <tr key={v.id} className="hover:bg-slate-50 transition">
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className={`p-2 rounded-lg ${v.erupting ? 'bg-red-100 text-red-600' : statusConfig[v.status]?.light}`}>
-                            {v.erupting ? '🔥' : '🌋'}
-                          </div>
-                          <div>
-                            <div className="font-semibold">{v.name}</div>
-                            {v.erupting && <span className="text-xs text-red-600 font-bold animate-pulse">SEDANG ERUPSI</span>}
-                          </div>
+                    
+                    <div class="map-legend">
+                        <h4><i class="fas fa-bookmark"></i> Legenda Visualisasi</h4>
+                        <div class="legend-item">
+                            <span class="legend-color" style="background: linear-gradient(135deg, #ef4444, #f59e0b);"></span>
+                            Zona Bahaya Resmi
                         </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div>{v.regency}</div>
-                        <div className="text-xs text-slate-400">{v.province}</div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`status-badge ${statusConfig[v.status]?.bg}`}>{v.status}</span>
-                      </td>
-                      <td className="px-6 py-4">{v.elevation} mdpl</td>
-                      <td className="px-6 py-4 text-right">
-                        <button onClick={() => { setSelected(v); setView('simulation'); }} className="inline-flex items-center gap-1 px-4 py-2 bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 text-white rounded-lg text-xs font-bold transition shadow-md hover:scale-105">
-                           Simulasi
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                        <div class="legend-item">
+                            <span class="legend-color" style="background: linear-gradient(135deg, #8b7355, #a08c78); opacity: 0.6;"></span>
+                            Awan Abu Vulkanik
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-color" style="background: linear-gradient(135deg, #dc2626, #ef4444);"></span>
+                            Awan Panas (Piroklastik)
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-color" style="background: linear-gradient(135deg, #3b82f6, #8b5cf6);"></span>
+                            Lokasi Anda
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-color" style="background: linear-gradient(135deg, #f59e0b, #fbbf24); animation: pulse 2s;"></span>
+                            Kolom Erupsi
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="side-panel">
+                    <div class="simulation-panel">
+                        <h3><i class="fas fa-sliders-h"></i> Kontrol Simulasi</h3>
+                        <div class="control-group">
+                            <label><i class="fas fa-wind"></i> Kecepatan Angin: <span id="wind-speed-value">15</span> km/jam</label>
+                            <input type="range" class="control-slider" id="wind-speed" min="5" max="50" value="15">
+                        </div>
+                        <div class="control-group">
+                            <label><i class="fas fa-cloud"></i> Intensitas Erupsi: <span id="intensity-value">Sedang</span></label>
+                            <input type="range" class="control-slider" id="eruption-intensity" min="1" max="5" value="3">
+                        </div>
+                        <div class="control-group">
+                            <label><i class="fas fa-clock"></i> Durasi Animasi</label>
+                            <select class="form-select" id="animation-duration" style="width: 100%; padding: 10px; border-radius: 8px; border: 2px solid #e5e7eb;">
+                                <option value="30">30 detik</option>
+                                <option value="60" selected>1 menit</option>
+                                <option value="120">2 menit</option>
+                            </select>
+                        </div>
+                        <div class="status-indicator">
+                            <span class="status-dot"></span>
+                            <span id="simulation-status">Siap Simulasi</span>
+                        </div>
+                    </div>
+                    
+                    <div class="info-card">
+                        <h3><i class="fas fa-map-pin"></i> Informasi Lokasi</h3>
+                        <div id="location-info" class="info-content">
+                            <p class="placeholder"><i class="fas fa-info-circle"></i> Klik "Lokasi Saya" atau "Pilih Peta" untuk menentukan posisi</p>
+                        </div>
+                    </div>
+                    
+                    <div class="info-card">
+                        <h3><i class="fas fa-chart-bar"></i> Parameter Simulasi</h3>
+                        <div id="simulation-params" class="info-content"></div>
+                    </div>
+                    
+                    <div id="analysis-card" class="info-card" style="display: none;">
+                        <h3><i class="fas fa-clipboard-check"></i> Analisis Risiko</h3>
+                        <div id="analysis-content" class="info-content"></div>
+                    </div>
+                </div>
+            </div>
         </div>
-
-        <footer className="text-center text-sm text-slate-500 py-8">
-          <p>© 2026 Monitor Gunung Api Indonesia • Data: MAGMA Indonesia (PVMBG)</p>
-          <p className="mt-1">Dashboard ini untuk tujuan edukasi dan monitoring. Selalu ikuti arahan resmi PVMBG & BPBD.</p>
-        </footer>
-      </div>
-
-      <GeoGuardAI context={{ volcanoes, stats, lastUpdate, status }} />
     </div>
-  );
-}
 
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<App />);
-</script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // Data Gunung Api
+        const volcanoData = [
+            { id: "MT01", name: "Semeru", province: "Jawa Timur", coordinates: { lat: -8.1082, lng: 112.9224 }, elevation: 3676, dangerRadius: 5 },
+            { id: "MT02", name: "Merapi", province: "DI Yogyakarta", coordinates: { lat: -7.5407, lng: 110.4463 }, elevation: 2910, dangerRadius: 7 },
+            { id: "MT03", name: "Sinabung", province: "Sumatera Utara", coordinates: { lat: 3.17, lng: 98.392 }, elevation: 2460, dangerRadius: 8 }
+        ];
+
+        let map, volcanoMarker, userMarker, hazardLayers = [], currentVolcano = null, userLocation = null;
+        let eruptionInterval, particleInterval;
+        let windSpeed = 15;
+        let eruptionIntensity = 3;
+
+        function navigateTo(pageId) {
+            document.querySelectorAll('.page').forEach(page => page.classList.remove('active'));
+            document.getElementById(pageId).classList.add('active');
+        }
+
+        function initSimulationPage() {
+            currentVolcano = volcanoData[0]; // Default Semeru
+            document.getElementById('sim-volcano-name').innerHTML = `<i class="fas fa-volcano"></i> Simulasi ${currentVolcano.name}`;
+            updateSimulationParams();
+            
+            document.getElementById('btn-use-location').onclick = useUserLocation;
+            document.getElementById('btn-pick-location').onclick = enablePickLocation;
+            document.getElementById('btn-run-simulation').onclick = runSimulation;
+            
+            // Control sliders
+            document.getElementById('wind-speed').addEventListener('input', (e) => {
+                windSpeed = e.target.value;
+                document.getElementById('wind-speed-value').textContent = windSpeed;
+            });
+            
+            document.getElementById('eruption-intensity').addEventListener('input', (e) => {
+                eruptionIntensity = e.target.value;
+                const labels = ['Sangat Rendah', 'Rendah', 'Sedang', 'Tinggi', 'Sangat Tinggi'];
+                document.getElementById('intensity-value').textContent = labels[eruptionIntensity - 1];
+            });
+            
+            setTimeout(() => { initMap(); }, 100);
+        }
+
+        function initMap() {
+            if (map) map.remove();
+            
+            map = L.map('map', {
+                center: [currentVolcano.coordinates.lat, currentVolcano.coordinates.lng],
+                zoom: 12,
+                zoomControl: true
+            });
+            
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap',
+                maxZoom: 19
+            }).addTo(map);
+            
+            setTimeout(() => { map.invalidateSize(); }, 200);
+            
+            // Volcano marker dengan efek glow
+            const volcanoIcon = L.divIcon({
+                className: 'volcano-marker',
+                html: `<div style="background: linear-gradient(135deg, #ef4444, #f59e0b); width: 40px; height: 40px; border-radius: 50%; border: 4px solid white; box-shadow: 0 0 30px rgba(239,68,68,0.8); animation: pulse 2s infinite; display: flex; align-items: center; justify-content: center;"><i class="fas fa-mountain" style="color: white; font-size: 18px;"></i></div>`,
+                iconSize: [40, 40],
+                iconAnchor: [20, 20]
+            });
+            
+            volcanoMarker = L.marker([currentVolcano.coordinates.lat, currentVolcano.coordinates.lng], { icon: volcanoIcon }).addTo(map);
+            volcanoMarker.bindPopup(`<strong>${currentVolcano.name}</strong><br>Elevasi: ${currentVolcano.elevation}m`);
+            
+            // Zona bahaya
+            const dangerZone = L.circle([currentVolcano.coordinates.lat, currentVolcano.coordinates.lng], {
+                color: '#ef4444',
+                fillColor: '#ef4444',
+                fillOpacity: 0.2,
+                radius: currentVolcano.dangerRadius * 1000,
+                weight: 3
+            }).addTo(map);
+            hazardLayers.push(dangerZone);
+            
+            map.setView([currentVolcano.coordinates.lat, currentVolcano.coordinates.lng], 12);
+        }
+
+        function useUserLocation() {
+            if (!navigator.geolocation) {
+                alert('Geolocation tidak didukung');
+                return;
+            }
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    userLocation = { lat: position.coords.latitude, lng: position.coords.longitude };
+                    displayUserLocation();
+                },
+                () => alert('Gagal mendapatkan lokasi')
+            );
+        }
+
+        function enablePickLocation() {
+            alert('Klik pada peta untuk memilih lokasi');
+            map.once('click', (e) => {
+                userLocation = { lat: e.latlng.lat, lng: e.latlng.lng };
+                displayUserLocation();
+            });
+        }
+
+        function displayUserLocation() {
+            if (userMarker) map.removeLayer(userMarker);
+            
+            const userIcon = L.divIcon({
+                html: `<div style="background: linear-gradient(135deg, #3b82f6, #8b5cf6); width: 35px; height: 35px; border-radius: 50%; border: 4px solid white; box-shadow: 0 4px 12px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center;"><i class="fas fa-location-crosshairs" style="color: white; font-size: 16px;"></i></div>`,
+                iconSize: [35, 35],
+                iconAnchor: [17, 17]
+            });
+            
+            userMarker = L.marker([userLocation.lat, userLocation.lng], { icon: userIcon }).addTo(map);
+            
+            const distance = calculateDistance(
+                currentVolcano.coordinates.lat, currentVolcano.coordinates.lng,
+                userLocation.lat, userLocation.lng
+            );
+            
+            document.getElementById('location-info').innerHTML = `
+                <div class="param-item"><span class="param-label">Koordinat</span><span class="param-value">${userLocation.lat.toFixed(4)}, ${userLocation.lng.toFixed(4)}</span></div>
+                <div class="param-item"><span class="param-label">Jarak dari Kawah</span><span class="param-value">${distance.toFixed(2)} km</span></div>
+            `;
+            
+            map.fitBounds([
+                [currentVolcano.coordinates.lat, currentVolcano.coordinates.lng],
+                [userLocation.lat, userLocation.lng]
+            ], { padding: [50, 50] });
+        }
+
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                      Math.sin(dLon/2) * Math.sin(dLon/2);
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        }
+
+        function updateSimulationParams() {
+            document.getElementById('simulation-params').innerHTML = `
+                <div class="param-item"><span class="param-label">Gunung Api</span><span class="param-value">${currentVolcano.name}</span></div>
+                <div class="param-item"><span class="param-label">Elevasi</span><span class="param-value">${currentVolcano.elevation}m</span></div>
+                <div class="param-item"><span class="param-label">Zona Bahaya</span><span class="param-value">${currentVolcano.dangerRadius} km</span></div>
+            `;
+        }
+
+        function runSimulation() {
+            if (!userLocation) {
+                alert('Silakan tentukan lokasi terlebih dahulu');
+                return;
+            }
+            
+            document.getElementById('simulation-status').textContent = 'Simulasi Berjalan...';
+            document.getElementById('analysis-card').style.display = 'block';
+            
+            // Clear previous animations
+            clearAnimations();
+            
+            // Start eruption animations
+            startEruptionAnimations();
+            
+            // Analyze risk
+            analyzeRisk();
+        }
+
+        function startEruptionAnimations() {
+            const overlay = document.getElementById('eruption-overlay');
+            const mapCenter = map.latLngToContainerPoint([currentVolcano.coordinates.lat, currentVolcano.coordinates.lng]);
+            
+            // Wind directions
+            const windDirs = {
+                'N': { x: 0, y: -1 },
+                'NE': { x: 0.7, y: -0.7 },
+                'E': { x: 1, y: 0 },
+                'SE': { x: 0.7, y: 0.7 },
+                'S': { x: 0, y: 1 },
+                'SW': { x: -0.7, y: 0.7 },
+                'W': { x: -1, y: 0 },
+                'NW': { x: -0.7, y: -0.7 }
+            };
+            
+            const windDir = windDirs['E']; // Default East
+            const intensity = eruptionIntensity * 20;
+            
+            // Create eruption column
+            const column = document.createElement('div');
+            column.className = 'eruption-column';
+            column.style.left = (mapCenter.x - 25) + 'px';
+            column.style.top = (mapCenter.y - 200) + 'px';
+            column.style.width = '50px';
+            column.style.setProperty('--column-height', (intensity * 3) + 'px');
+            overlay.appendChild(column);
+            
+            // Create ash clouds
+            eruptionInterval = setInterval(() => {
+                for (let i = 0; i < 3; i++) {
+                    setTimeout(() => {
+                        const cloud = document.createElement('div');
+                        cloud.className = 'ash-cloud';
+                        const size = 60 + Math.random() * 80;
+                        cloud.style.width = size + 'px';
+                        cloud.style.height = size + 'px';
+                        cloud.style.left = (mapCenter.x - size/2) + 'px';
+                        cloud.style.top = (mapCenter.y - size/2) + 'px';
+                        cloud.style.setProperty('--tx', (windDir.x * (100 + Math.random() * 200)) + 'px');
+                        cloud.style.setProperty('--ty', (windDir.y * (100 + Math.random() * 200)) + 'px';
+                        overlay.appendChild(cloud);
+                        
+                        setTimeout(() => cloud.remove(), 8000);
+                    }, i * 500);
+                }
+            }, 2000);
+            
+            // Create particles
+            particleInterval = setInterval(() => {
+                for (let i = 0; i < 5; i++) {
+                    const particle = document.createElement('div');
+                    particle.className = 'particle';
+                    particle.style.left = mapCenter.x + 'px';
+                    particle.style.top = mapCenter.y + 'px';
+                    const angle = (Math.random() - 0.5) * Math.PI / 2;
+                    const distance = 100 + Math.random() * 150;
+                    particle.style.setProperty('--px', (Math.cos(angle) * distance * windDir.x) + 'px');
+                    particle.style.setProperty('--py', (Math.sin(angle) * distance * windDir.y) + 'px');
+                    overlay.appendChild(particle);
+                    
+                    setTimeout(() => particle.remove(), 4000);
+                }
+            }, 300);
+            
+            // Create shockwaves
+            setInterval(() => {
+                const shockwave = document.createElement('div');
+                shockwave.className = 'shockwave';
+                shockwave.style.left = (mapCenter.x - 200) + 'px';
+                shockwave.style.top = (mapCenter.y - 200) + 'px';
+                overlay.appendChild(shockwave);
+                
+                setTimeout(() => shockwave.remove(), 2000);
+            }, 3000);
+        }
+
+        function clearAnimations() {
+            const overlay = document.getElementById('eruption-overlay');
+            overlay.innerHTML = '';
+            if (eruptionInterval) clearInterval(eruptionInterval);
+            if (particleInterval) clearInterval(particleInterval);
+        }
+
+        function analyzeRisk() {
+            const distance = calculateDistance(
+                currentVolcano.coordinates.lat, currentVolcano.coordinates.lng,
+                userLocation.lat, userLocation.lng
+            );
+            
+            let riskLevel = 'Rendah', riskClass = 'risk-low', analysis = '';
+            
+            if (distance <= currentVolcano.dangerRadius) {
+                riskLevel = 'Tinggi';
+                riskClass = 'risk-high';
+                analysis = '<i class="fas fa-exclamation-triangle"></i> Lokasi Anda dalam zona bahaya!';
+            } else if (distance <= currentVolcano.dangerRadius * 2) {
+                riskLevel = 'Sedang';
+                riskClass = 'risk-medium';
+                analysis = '<i class="fas fa-exclamation-circle"></i> Berpotensi terdampak abu vulkanik';
+            } else {
+                analysis = '<i class="fas fa-check-circle"></i> Lokasi relatif aman dari dampak langsung';
+            }
+            
+            document.getElementById('analysis-content').innerHTML = `
+                <div class="param-item"><span class="param-label">Tingkat Risiko</span><span class="risk-level ${riskClass}">${riskLevel}</span></div>
+                <div class="param-item"><span class="param-label">Jarak</span><span class="param-value">${distance.toFixed(2)} km</span></div>
+                <div style="margin-top: 16px; padding: 16px; background: linear-gradient(135deg, #f0f9ff, #e0e7ff); border-radius: 10px;">${analysis}</div>
+            `;
+        }
+
+        function confirmExit() {
+            if (confirm('Keluar dari simulasi?')) {
+                clearAnimations();
+                navigateTo('landing-page');
+            }
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            initSimulationPage();
+        });
+    </script>
 </body>
 </html>
